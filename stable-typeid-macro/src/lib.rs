@@ -55,9 +55,19 @@ pub fn stable_id(input: TokenStream) -> TokenStream {
                         )
                     })
                     .collect();
-                type_str_list.join(";")
+                format!("struct~{}{{{}}}", name.to_string(), type_str_list.join(";"))
             }
-            _ => panic!("Expected named fields"),
+            Fields::Unit => {
+                format!("struct {}", name.to_string())
+            }
+            Fields::Unnamed(fields) => {
+                let type_str_list: Vec<String> = fields
+                    .unnamed
+                    .iter()
+                    .map(|f| f.ident.clone().unwrap().to_string())
+                    .collect();
+                format!("struct~{}({})", name.to_string(), type_str_list.join(","))
+            }
         },
         Data::Enum(data) => {
             let type_str_list: Vec<String> = data
@@ -67,32 +77,32 @@ pub fn stable_id(input: TokenStream) -> TokenStream {
                     format!(
                         "{}{}",
                         v.ident.to_string(),
-                        v.fields.to_token_stream().to_string()
+                        v.fields.to_token_stream().to_string(),
                     )
                 })
                 .collect();
-            type_str_list.join(",")
+            format!("enum~{}{{{}}}", name.to_string(), type_str_list.join(","))
         }
         _ => panic!("Expected a struct or enum"),
     };
     let hash = hash(&type_string);
     let expanded = quote! {
         #[doc = #type_string]
-        impl StableAny for #name {
-            fn type_id(&self) -> &'static StableId where Self: Sized {
-                &StableId(#hash)
+        impl stable_typeid::StableAny for #name {
+            fn type_id(&self) -> &'static stable_typeid::StableId where Self: Sized {
+                &stable_typeid::StableId(#hash)
             }
         }
 
-        impl StableID for #name {
-            const _STABLE_ID: &'static StableId = &StableId(#hash);
+        impl stable_typeid::StableID for #name {
+            const _STABLE_ID: &'static stable_typeid::StableId = &stable_typeid::StableId(#hash);
         }
     };
     TokenStream::from(expanded)
 }
 
 #[proc_macro_attribute]
-pub fn stable_type(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn stable_sorted_type(attr: TokenStream, item: TokenStream) -> TokenStream {
     let sort = sort(attr, item);
     let stable = stable_id(sort.clone());
     let sort = proc_macro2::TokenStream::from(sort);
