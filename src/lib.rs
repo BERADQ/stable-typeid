@@ -1,7 +1,7 @@
 pub use stable_typeid_macro::*;
 
 pub trait StableAny: 'static {
-    fn type_id(&self) -> &'static StableId;
+    fn stable_id(&self) -> &'static StableId;
 }
 
 pub trait StableAnyTrait {
@@ -23,7 +23,7 @@ impl StableAnyTrait for dyn StableAny {
     where
         T: StableID,
     {
-        T::_STABLE_ID == self.type_id()
+        T::_STABLE_ID == self.stable_id()
     }
     fn downcast_ref_unchecked<N>(&self) -> &N {
         unsafe { &*(self as *const Self as *const N) }

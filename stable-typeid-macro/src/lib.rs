@@ -89,7 +89,7 @@ pub fn stable_id(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #[doc = #type_string]
         impl stable_typeid::StableAny for #name {
-            fn type_id(&self) -> &'static stable_typeid::StableId where Self: Sized {
+            fn stable_id(&self) -> &'static stable_typeid::StableId where Self: Sized {
                 &stable_typeid::StableId(#hash)
             }
         }
