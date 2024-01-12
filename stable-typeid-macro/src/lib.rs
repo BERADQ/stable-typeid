@@ -1,55 +1,38 @@
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident, Type, Visibility};
-mod sort;
+use quote::{quote, ToTokens};
+use syn::{parse_macro_input, Data, DeriveInput, Fields};
+mod util;
+use util::*;
 
-fn hash(s: &str) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    s.hash(&mut hasher);
-    hasher.finish()
-}
 #[proc_macro_attribute]
-pub fn sort_struct(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    // 解析为结构体
+pub fn sort(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
-    // struct名称
+    let vis = input.vis;
     let name = input.ident;
-    // struct vis
-    let main_vis = input.vis;
-    // struct generic
-    let main_generic = input.generics;
-    // struct字段
-    let fields = match input.data {
-        Data::Struct(data) => match data.fields {
-            Fields::Named(fields) => fields,
+    let generics = input.generics;
+    let expanded: proc_macro2::TokenStream = match &input.data {
+        Data::Struct(data) => match &data.fields {
+            Fields::Named(fields) => {
+                let mut named_fields: Vec<_> = fields.named.iter().collect();
+                named_fields.sort_by_key(|f| hash(&f.ident.clone().unwrap().to_string()));
+                quote! {
+                    #vis struct #name #generics {
+                        #(#named_fields),*
+                    }
+                }
+            }
             _ => panic!("Expected named fields"),
         },
-        _ => panic!("Expected a struct"),
-    };
-    let mut field_vec = Vec::new();
-    let mut viss: Vec<Visibility> = Vec::new();
-    for field in fields.named {
-        let ident = field.ident.unwrap();
-        let ty = field.ty;
-        let vis = field.vis;
-        field_vec.push((ident, ty));
-        viss.push(vis);
-    }
-    // 排序
-    field_vec.sort_by_key(|(ident, _)| hash(&ident.to_string()));
-    let mut idents: Vec<Ident> = Vec::new();
-    let mut tys: Vec<Type> = Vec::new();
-    for field in field_vec {
-        idents.push(field.0);
-        tys.push(field.1);
-    }
-
-    let expanded = quote! {
-        #main_vis struct #name #main_generic {
-            #(#viss #idents: #tys),*
+        Data::Enum(data) => {
+            let mut variants: Vec<_> = data.variants.iter().collect();
+            variants.sort_by_key(|v| hash(&v.ident.to_string()));
+            quote! {
+                #vis enum #name #generics {
+                    #(#variants),*
+                }
+            }
         }
+        _ => panic!("Expected a struct or enum"),
     };
     TokenStream::from(expanded)
 }
@@ -58,23 +41,43 @@ pub fn sort_struct(_attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn stable_id(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = input.ident;
-    let fields = match input.data {
+    let type_string = match input.data {
         Data::Struct(data) => match data.fields {
-            Fields::Named(fields) => fields,
+            Fields::Named(fields) => {
+                let type_str_list: Vec<String> = fields
+                    .named
+                    .iter()
+                    .map(|f| {
+                        format!(
+                            "{}:{}",
+                            f.ident.clone().unwrap().to_string(),
+                            f.ty.to_token_stream().to_string()
+                        )
+                    })
+                    .collect();
+                type_str_list.join(";")
+            }
             _ => panic!("Expected named fields"),
         },
-        _ => panic!("Expected a struct"),
+        Data::Enum(data) => {
+            let type_str_list: Vec<String> = data
+                .variants
+                .iter()
+                .map(|v| {
+                    format!(
+                        "{}{}",
+                        v.ident.to_string(),
+                        v.fields.to_token_stream().to_string()
+                    )
+                })
+                .collect();
+            type_str_list.join(",")
+        }
+        _ => panic!("Expected a struct or enum"),
     };
-    let mut field_strings: Vec<String> = Vec::new();
-    for field in fields.named {
-        let ident = field.ident.unwrap().to_string();
-        let ty = field.ty;
-        let ty = quote! {#ty};
-        let ty = ty.to_string();
-        field_strings.push(format!("{}${};", ident, ty));
-    }
-    let hash = hash(&field_strings.join(""));
+    let hash = hash(&type_string);
     let expanded = quote! {
+        #[doc = #type_string]
         impl StableAny for #name {
             fn type_id(&self) -> &'static StableId where Self: Sized {
                 &StableId(#hash)
@@ -90,7 +93,7 @@ pub fn stable_id(input: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn stable_type(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let sort = sort_struct(attr, item);
+    let sort = sort(attr, item);
     let stable = stable_id(sort.clone());
     let sort = proc_macro2::TokenStream::from(sort);
     let stable = proc_macro2::TokenStream::from(stable);
