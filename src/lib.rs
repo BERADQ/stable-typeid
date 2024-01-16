@@ -53,6 +53,7 @@ impl StableAnyTrait for dyn StableAny {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct StableId(pub u64);
 impl PartialEq for StableId {
     fn eq(&self, other: &Self) -> bool {
