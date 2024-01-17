@@ -2,10 +2,11 @@
 members = ["stable-typeid-macro"]
 [package]
 name = "stable-typeid"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
-
+description = "Generate a stable type identifier for rust structs and enums"
+license-file = "LICENSE"
+authors = ["BERADQ <adqber123@outlook.com>"]
+repository = "https://github.com/BERADQ/stable-typeid" 
 [dependencies]
-quote = "1.0.35"
-syn = "2.0.48"
 stable-typeid-macro = { path = "./stable-typeid-macro" }
