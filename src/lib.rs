@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 pub use stable_typeid_macro::*;
 
 pub trait StableAny: 'static {
@@ -62,4 +64,31 @@ impl PartialEq for StableId {
 }
 pub trait StableID {
     const _STABLE_ID: &'static StableId;
+}
+impl Display for StableId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("ID({})", self.0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate as stable_typeid;
+    use stable_typeid::*;
+    #[test]
+    fn main_test() {
+        let any = MyStruct {
+            anything: "Hello TypeId".to_string(),
+        };
+        foo(&any);
+    }
+    fn foo(any: &dyn StableAny) {
+        if let Some(my_struct) = any.downcast_ref::<MyStruct>() {
+            println!("{} {}", my_struct.anything, MyStruct::_STABLE_ID);
+        }
+    }
+    #[derive(StableID)]
+    struct MyStruct {
+        anything: String,
+    }
 }
