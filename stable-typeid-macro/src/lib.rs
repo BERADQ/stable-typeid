@@ -1,6 +1,8 @@
+#![feature(proc_macro_span)]
+#![feature(proc_macro_def_site)]
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{parse_macro_input, Data, DeriveInput, Fields};
+use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Fields};
 mod util;
 use util::*;
 
@@ -11,18 +13,19 @@ pub fn sort(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let name = input.ident;
     let generics = input.generics;
     let expanded: proc_macro2::TokenStream = match &input.data {
-        Data::Struct(data) => match &data.fields {
-            Fields::Named(fields) => {
-                let mut named_fields: Vec<_> = fields.named.iter().collect();
-                named_fields.sort_by_key(|f| hash(&f.ident.clone().unwrap().to_string()));
-                quote! {
-                    #vis struct #name #generics {
-                        #(#named_fields),*
-                    }
+        Data::Struct(DataStruct {
+            fields: Fields::Named(fields),
+            ..
+        }) => {
+            let mut named_fields: Vec<_> = fields.named.iter().collect();
+            named_fields.sort_by_key(|f| hash(&f.ident.clone().unwrap().to_string()));
+            quote! {
+                #vis struct #name #generics {
+                    #(#named_fields),*
                 }
             }
-            _ => panic!("Expected named fields"),
-        },
+        }
+        Data::Struct(_) => panic!("Expected named fields"),
         Data::Enum(data) => {
             let mut variants: Vec<_> = data.variants.iter().collect();
             variants.sort_by_key(|v| hash(&v.ident.to_string()));
@@ -36,12 +39,11 @@ pub fn sort(_attr: TokenStream, item: TokenStream) -> TokenStream {
     };
     TokenStream::from(expanded)
 }
-
 #[proc_macro_derive(StableID)]
 pub fn stable_id(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = input.ident;
-    let type_string = match input.data {
+    let mut type_string = match input.data {
         Data::Struct(data) => match data.fields {
             Fields::Named(fields) => {
                 let type_str_list: Vec<String> = fields
@@ -49,8 +51,8 @@ pub fn stable_id(input: TokenStream) -> TokenStream {
                     .iter()
                     .map(|f| {
                         format!(
-                            "{}:{}",
-                            f.ident.clone().unwrap().to_string(),
+                            "{}: {}",
+                            f.ident.as_ref().unwrap().to_string(),
                             f.ty.to_token_stream().to_string()
                         )
                     })
@@ -58,7 +60,7 @@ pub fn stable_id(input: TokenStream) -> TokenStream {
                 format!("struct~{}{{{}}}", name.to_string(), type_str_list.join(";"))
             }
             Fields::Unit => {
-                format!("struct {}", name.to_string())
+                format!("struct~{}", name.to_string())
             }
             Fields::Unnamed(fields) => {
                 let type_str_list: Vec<String> = fields
@@ -85,9 +87,11 @@ pub fn stable_id(input: TokenStream) -> TokenStream {
         }
         _ => panic!("Expected a struct or enum"),
     };
+    type_string = format!("{}%{}", get_pkg_name(), type_string);
     let hash = hash(&type_string);
+    let doc = format!("type_name = {} \ntype_id = {}", type_string, hash);
     let expanded = quote! {
-        #[doc = #type_string]
+        #[doc = #doc]
         impl stable_typeid::StableAny for #name {
             fn stable_id(&self) -> &'static stable_typeid::StableId where Self: Sized {
                 &stable_typeid::StableId(#hash)

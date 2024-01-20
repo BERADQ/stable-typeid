@@ -5,3 +5,7 @@ pub fn hash(s: &str) -> u64 {
     s.hash(&mut hasher);
     hasher.finish()
 }
+pub fn get_pkg_name() -> String {
+    let env = std::env::var("CARGO_PKG_NAME");
+    env.unwrap_or("".to_string())
+}
